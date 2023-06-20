@@ -1,91 +1,106 @@
-import Image from 'next/image'
-import { Inter } from 'next/font/google'
-import styles from './page.module.css'
+'use client'
 
-const inter = Inter({ subsets: ['latin'] })
+import {Inter} from 'next/font/google'
+import {useState, ChangeEvent} from 'react'
+import {ChatCompletionRequestMessage} from 'openai'
+import {sendMessage} from './utils/sendMessage'
+import clsx from 'clsx'
+import Prose from './components/Prose'
 
-export default function Home() {
+function Item({item}: {item: ChatCompletionRequestMessage}) {
+  if (item.role === 'user') {
+    return <Prose className="bg-blue-200">{item.content}</Prose>
+  } else {
+    return <Prose>{item.content}</Prose>
+  }
+}
+
+function transformToPreCode(textContent: string) {
+  const regex = /```/g
+  const preCodeStart = '<pre>'
+  const preCodeEnd = '</pre>'
+
+  const replacedText = textContent
+    .replace(regex, preCodeStart)
+    .replace(regex, preCodeEnd)
+
+  return replacedText
+}
+
+function Home() {
+  const [prompt, setPrompt] = useState('')
+  const [code, setCode] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [messages, setMessages] = useState<ChatCompletionRequestMessage[]>([])
+  const [stream, setStream] = useState('')
+
+  const handlePromptChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setPrompt(event.target.value)
+  }
+
+  const addMessage = async () => {
+    setIsLoading(true)
+    try {
+      setCode(prompt)
+      setPrompt('')
+      setStream('')
+      const response = await sendMessage(prompt)
+      const data = response?.body
+      if (!data) {
+        return
+      }
+      const reader = data.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let done = false
+
+      while (!done) {
+        const {value, done: doneReading} = await reader.read()
+        done = doneReading
+        const chunkValue = decoder.decode(value)
+        console.log(chunkValue)
+        setStream((prev) => prev + chunkValue)
+        // setMessages([...messages, userMessage, newMessage])
+      }
+    } catch (error) {
+      console.log('error', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
-    <main className={styles.main}>
-      <div className={styles.description}>
-        <p>
-          Get started by editing&nbsp;
-          <code className={styles.code}>app/page.tsx</code>
-        </p>
-        <div>
-          <a
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className={styles.vercelLogo}
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
-
-      <div className={styles.center}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
+    <main className="flex h-full w-full bg-gray-100 p-4">
+      <div className="w-1/2 flex-col items-center border border-r-gray-600 p-4">
+        {isLoading && <div>Loading...</div>}
+        <input
+          type="text"
+          onChange={handlePromptChange}
+          value={prompt}
+          placeholder="Type your code here..."
+          className="h-26 w-full border border-gray-400 p-4 placeholder:text-gray-400"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              addMessage()
+            }
+          }}
         />
-        <div className={styles.thirteen}>
-          <Image src="/thirteen.svg" alt="13" width={40} height={31} priority />
-        </div>
+        {/* <button onClick={addMessage} className="bg-gray-200">
+            Submit
+          </button> */}
+        <div className="border border-gray-600">{prompt}</div>
       </div>
-
-      <div className={styles.grid}>
-        <a
-          href="https://beta.nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={inter.className}>
-            Docs <span>-&gt;</span>
-          </h2>
-          <p className={inter.className}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={inter.className}>
-            Templates <span>-&gt;</span>
-          </h2>
-          <p className={inter.className}>Explore the Next.js 13 playground.</p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={inter.className}>
-            Deploy <span>-&gt;</span>
-          </h2>
-          <p className={inter.className}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
+      <div className="h-full w-1/2 overflow-y-scroll p-4">
+        <Prose>{stream}</Prose>
+        {/* {messages.map((item, index) => (
+          <Item item={item} key={index} />
+        ))} */}
       </div>
+      {/* <div
+        className="prose border border-t-red-500 bg-white"
+        dangerouslySetInnerHTML={{__html: transformToPreCode(code)}}
+      /> */}
     </main>
   )
 }
+
+export default Home
